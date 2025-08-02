@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE TupleSections      #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
@@ -74,6 +75,7 @@ import           Control.Applicative.Combinators.NonEmpty
 import           Control.Monad (void, when)
 import           Data.Bool (bool)
 import           Data.Char (isDigit)
+import           Data.Data (Data)
 import           Data.Functor (($>))
 import           Data.Hashable (Hashable)
 import           Data.List.NonEmpty (NonEmpty(..))
@@ -109,7 +111,7 @@ data OrgFile = OrgFile
   -- #+AUTHOR: Colin
   -- @
   , orgDoc  :: OrgDoc }
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 emptyOrgFile :: OrgFile
 emptyOrgFile = OrgFile mempty emptyDoc
@@ -127,7 +129,7 @@ emptyOrgFile = OrgFile mempty emptyDoc
 data OrgDoc = OrgDoc
   { docBlocks   :: [Block]
   , docSections :: [Section] }
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 emptyDoc :: OrgDoc
 emptyDoc = OrgDoc [] []
@@ -150,7 +152,7 @@ data Block
   | List ListItems
   | Table (NonEmpty Row)
   | Paragraph (NonEmpty Words)
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | An org-mode timestamp. Must contain at least a year-month-day and the day
 -- of the week:
@@ -182,7 +184,7 @@ data OrgDateTime = OrgDateTime
   , dateTime      :: Maybe OrgTime
   , dateRepeat    :: Maybe Repeater
   , dateDelay     :: Maybe Delay }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Data)
 
 -- | A lack of a specific `OrgTime` is assumed to mean @00:00@, the earliest
 -- possible time for that day.
@@ -205,7 +207,7 @@ instance Ord OrgDateTime where
 data OrgTime = OrgTime
   { timeStart :: TimeOfDay
   , timeEnd   :: Maybe TimeOfDay }
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | An indication of how often a timestamp should be automatically reapplied in
 -- the Org Agenda.
@@ -213,32 +215,32 @@ data Repeater = Repeater
   { repMode     :: RepeatMode
   , repValue    :: Word
   , repInterval :: Interval }
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | The nature of the repitition.
 data RepeatMode
   = Single     -- ^ Apply the interval value to the original timestamp once: @+@
   | Jump       -- ^ Apply the interval value as many times as necessary to arrive on a future date: @++@
   | FromToday  -- ^ Apply the interval value from today: @.+@
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | The timestamp repitition unit.
 data Interval = Hour | Day | Week | Month | Year
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | Delay the appearance of a timestamp in the agenda.
 data Delay = Delay
   { delayMode     :: DelayMode
   , delayValue    :: Word
   , delayInterval :: Interval }
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | When a repeater is also present, should the delay be for the first value or
 -- all of them?
 data DelayMode
   = DelayOne  -- ^ As in: @--2d@
   | DelayAll  -- ^ As in: @-2d@
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 -- | A subsection, marked by a heading line and followed recursively by an
 -- `OrgDoc`.
@@ -260,7 +262,7 @@ data Section = Section
     -- ^ A timestamp for general events that are neither a DEADLINE nor SCHEDULED.
   , sectionProps     :: M.Map Text Text
   , sectionDoc       :: OrgDoc }
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | A mostly empty invoking of a `Section`.
 titled :: Words -> Section
@@ -272,7 +274,7 @@ allSectionTags (Section _ _ _ sts _ _ _ _ _ doc) = S.fromList sts <> allDocTags 
 
 -- | The completion state of a heading that is considered a "todo" item.
 data Todo = TODO | DONE
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | A priority value, usually associated with a @TODO@ marking, as in:
 --
@@ -281,7 +283,7 @@ data Todo = TODO | DONE
 -- *** TODO [#B] Eat lunch
 -- @
 newtype Priority = Priority { priority :: Text }
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | An org list constructed of @-@ or @+@ characters, or numbers.
 --
@@ -295,14 +297,14 @@ newtype Priority = Priority { priority :: Text }
 -- 5. Feed the elephant
 -- @
 data ListItems = ListItems ListType (NonEmpty Item)
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 data ListType = Bulleted | Plussed | Numbered
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | A line in a bullet-list. Can contain sublists, as shown in `ListItems`.
 data Item = Item (NonEmpty Words) (Maybe ListItems)
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | A row in an org table. Can have content or be a horizontal rule.
 --
@@ -312,11 +314,11 @@ data Item = Item (NonEmpty Words) (Maybe ListItems)
 -- | D | E | F |
 -- @
 data Row = Break | Row (NonEmpty Column)
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | A possibly empty column in an org table.
 data Column = Empty | Column (NonEmpty Words)
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 -- | The fundamental unit of Org text content. `Plain` units are split
 -- word-by-word.
@@ -331,17 +333,17 @@ data Words
   | Image URL
   | Punct Char
   | Plain Text
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
   deriving anyclass (Hashable)
 
 -- | The url portion of a link.
 newtype URL = URL Text
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
   deriving anyclass (Hashable)
 
 -- | The programming language some source code block was written in.
 newtype Language = Language Text
-  deriving stock (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic, Data)
 
 --------------------------------------------------------------------------------
 -- Parser
