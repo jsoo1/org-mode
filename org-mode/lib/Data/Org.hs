@@ -1,9 +1,14 @@
-{-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE TupleSections      #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE DeriveLift          #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TupleSections       #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- |
@@ -75,8 +80,9 @@ import           Control.Applicative.Combinators.NonEmpty
 import           Control.Monad (void, when)
 import           Data.Bool (bool)
 import           Data.Char (isDigit)
-import           Data.Data (Data)
+import           Data.Data (Data, cast)
 import           Data.Functor (($>))
+import qualified Data.Fixed
 import           Data.Hashable (Hashable)
 import           Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NEL
@@ -86,10 +92,12 @@ import           Data.Semigroup (sconcat)
 import qualified Data.Set as S
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Data.Time (Day, TimeOfDay(..), fromGregorian, showGregorian)
+import           Data.Time (Day(..), TimeOfDay(..), fromGregorian, showGregorian)
 import           Data.Time.Calendar (DayOfWeek(..))
 import           Data.Void (Void)
 import           GHC.Generics (Generic)
+import           Language.Haskell.TH.Syntax (Lift(..))
+import qualified Language.Haskell.TH.Syntax as TH
 import           System.FilePath (takeExtension)
 import           Text.Megaparsec hiding (sepBy1, sepEndBy1, some, someTill)
 import           Text.Megaparsec.Char
@@ -116,6 +124,9 @@ data OrgFile = OrgFile
 emptyOrgFile :: OrgFile
 emptyOrgFile = OrgFile mempty emptyDoc
 
+instance Lift OrgFile where
+  lift = liftDataWithText
+
 -- | A recursive Org document. These are zero or more blocks of markup, followed
 -- by zero or more subsections.
 --
@@ -129,7 +140,7 @@ emptyOrgFile = OrgFile mempty emptyDoc
 data OrgDoc = OrgDoc
   { docBlocks   :: [Block]
   , docSections :: [Section] }
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 emptyDoc :: OrgDoc
 emptyDoc = OrgDoc [] []
@@ -152,7 +163,7 @@ data Block
   | List ListItems
   | Table (NonEmpty Row)
   | Paragraph (NonEmpty Words)
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | An org-mode timestamp. Must contain at least a year-month-day and the day
 -- of the week:
@@ -184,7 +195,7 @@ data OrgDateTime = OrgDateTime
   , dateTime      :: Maybe OrgTime
   , dateRepeat    :: Maybe Repeater
   , dateDelay     :: Maybe Delay }
-  deriving stock (Eq, Show, Data)
+  deriving stock (Eq, Show, Data, Lift)
 
 -- | A lack of a specific `OrgTime` is assumed to mean @00:00@, the earliest
 -- possible time for that day.
@@ -207,7 +218,7 @@ instance Ord OrgDateTime where
 data OrgTime = OrgTime
   { timeStart :: TimeOfDay
   , timeEnd   :: Maybe TimeOfDay }
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | An indication of how often a timestamp should be automatically reapplied in
 -- the Org Agenda.
@@ -215,32 +226,32 @@ data Repeater = Repeater
   { repMode     :: RepeatMode
   , repValue    :: Word
   , repInterval :: Interval }
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | The nature of the repitition.
 data RepeatMode
   = Single     -- ^ Apply the interval value to the original timestamp once: @+@
   | Jump       -- ^ Apply the interval value as many times as necessary to arrive on a future date: @++@
   | FromToday  -- ^ Apply the interval value from today: @.+@
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | The timestamp repitition unit.
 data Interval = Hour | Day | Week | Month | Year
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | Delay the appearance of a timestamp in the agenda.
 data Delay = Delay
   { delayMode     :: DelayMode
   , delayValue    :: Word
   , delayInterval :: Interval }
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | When a repeater is also present, should the delay be for the first value or
 -- all of them?
 data DelayMode
   = DelayOne  -- ^ As in: @--2d@
   | DelayAll  -- ^ As in: @-2d@
-  deriving stock (Eq, Ord, Show, Data)
+  deriving stock (Eq, Ord, Show, Data, Lift)
 
 -- | A subsection, marked by a heading line and followed recursively by an
 -- `OrgDoc`.
@@ -264,6 +275,9 @@ data Section = Section
   , sectionDoc       :: OrgDoc }
   deriving stock (Eq, Ord, Show, Generic, Data)
 
+instance Lift Section where
+  lift = liftDataWithText
+
 -- | A mostly empty invoking of a `Section`.
 titled :: Words -> Section
 titled ws = Section Nothing Nothing (ws:|[]) [] Nothing Nothing Nothing Nothing mempty emptyDoc
@@ -274,7 +288,7 @@ allSectionTags (Section _ _ _ sts _ _ _ _ _ doc) = S.fromList sts <> allDocTags 
 
 -- | The completion state of a heading that is considered a "todo" item.
 data Todo = TODO | DONE
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | A priority value, usually associated with a @TODO@ marking, as in:
 --
@@ -283,7 +297,7 @@ data Todo = TODO | DONE
 -- *** TODO [#B] Eat lunch
 -- @
 newtype Priority = Priority { priority :: Text }
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | An org list constructed of @-@ or @+@ characters, or numbers.
 --
@@ -297,14 +311,14 @@ newtype Priority = Priority { priority :: Text }
 -- 5. Feed the elephant
 -- @
 data ListItems = ListItems ListType (NonEmpty Item)
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 data ListType = Bulleted | Plussed | Numbered
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | A line in a bullet-list. Can contain sublists, as shown in `ListItems`.
 data Item = Item (NonEmpty Words) (Maybe ListItems)
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | A row in an org table. Can have content or be a horizontal rule.
 --
@@ -314,11 +328,11 @@ data Item = Item (NonEmpty Words) (Maybe ListItems)
 -- | D | E | F |
 -- @
 data Row = Break | Row (NonEmpty Column)
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | A possibly empty column in an org table.
 data Column = Empty | Column (NonEmpty Words)
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 -- | The fundamental unit of Org text content. `Plain` units are split
 -- word-by-word.
@@ -333,17 +347,17 @@ data Words
   | Image URL
   | Punct Char
   | Plain Text
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
   deriving anyclass (Hashable)
 
 -- | The url portion of a link.
 newtype URL = URL Text
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
   deriving anyclass (Hashable)
 
 -- | The programming language some source code block was written in.
 newtype Language = Language Text
-  deriving stock (Eq, Ord, Show, Generic, Data)
+  deriving stock (Eq, Ord, Show, Generic, Data, Lift)
 
 --------------------------------------------------------------------------------
 -- Parser
@@ -855,3 +869,16 @@ prettyWords w = case w of
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+-- | https://stackoverflow.com/questions/38143464/cant-find-inerface-file-declaration-for-variable
+liftText :: TH.Quote m => T.Text -> m TH.Exp
+liftText txt = [|T.pack $(lift (T.unpack txt))|]
+
+liftDataWithText :: Data a => TH.Quote m => a -> m TH.Exp
+liftDataWithText = TH.dataToExpQ (fmap liftText . cast)
+
+deriving instance Lift TimeOfDay
+deriving instance Lift Day
+deriving instance Lift DayOfWeek
+instance Data.Fixed.HasResolution a => Lift (Data.Fixed.Fixed a) where
+  lift x = [|toEnum $(lift (fromEnum x))|]

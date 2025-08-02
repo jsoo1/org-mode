@@ -38,6 +38,7 @@ library
     , filepath
     , hashable            >=1.2 && <1.5
     , parser-combinators  >=1.1 && <1.4
+    , template-haskell
     , time                >=1.9
 
 test-suite org-mode-test
