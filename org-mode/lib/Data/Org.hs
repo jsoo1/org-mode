@@ -880,5 +880,3 @@ liftDataWithText = TH.dataToExpQ (fmap liftText . cast)
 deriving instance Lift TimeOfDay
 deriving instance Lift Day
 deriving instance Lift DayOfWeek
-instance Data.Fixed.HasResolution a => Lift (Data.Fixed.Fixed a) where
-  lift x = [|toEnum $(lift (fromEnum x))|]
